@@ -2,6 +2,33 @@ import pykitti
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+
+def createRT(phix,phiy,phiz,tx,ty,tz):
+    #create RT matrix
+    RT=np.zeros((3,4))
+    return RT
+
+def projectpointsback(points0,depths0,P,RT):
+    #project points0 to 3d left cam system using depths and projection matrix P
+    #transform to new left cam system using RT Matrix
+    #project 3d points to screen in new position using P
+    #return point coordinates on screen in new position
+    projpoints=points0
+    return projpoints
+
+def dist(points0,points1):
+    #calculate geometric error of all points
+    return
+
+def errfct(params,points0,depths0,points1,P):
+    RT=createRT(params[0],params[1],params[2],params[3],params[4],params[5])
+    points1proj=projectpointsback(points0,depths0,P,RT)
+    # use for least square algorithm for optimizing RT Matrix parameters
+    return dist(points0,points1proj)
+
+
+
+
 basedir='/home/user/Downloads/data_odometry_gray/dataset/'
 sequence = '00'
 num_imgs=10
