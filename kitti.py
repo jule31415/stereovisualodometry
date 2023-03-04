@@ -22,9 +22,9 @@ def rot_z(phi: float):
 
 def createRT(phiz1,phix,phiz2,tx,ty,tz):
     R=rot_z(phiz2)@rotx(phix)@rotz(phiz1)
-    RT=np.zeros((4,4))
+    RT=np.zeros((3,4))
     RT[:3,:3]=R
-    RT[:,3]=np.array([[tx,ty,tz,1]])
+    RT[:,3]=np.array([[tx],[ty],[tz]])
     return RT
 
 def projectpointsback(points0,depths0,P,RT):
