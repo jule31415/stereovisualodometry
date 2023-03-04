@@ -35,17 +35,26 @@ def projectpointsback(points0,depths0,P,RT):
     projpoints=np.zeros_like(points0)
     for ip in range(len(points0)):
         point=points0[ip,0]
-        print(point)
+        print(f'point={point}')
         point0screen3=np.ones((3,1)) #point in camera position 0, coordinates on screen, 3 dimensional vector
-        point0screen3[0:2]=point
-        point0screen3[0]=point03[0]-P[3,0] #get rid of 4th column in projection matrix, is simple addition
-        point0screen3[0] = point03[1] - P[3, 1]
+        point0screen3[0:2,0]=point
+        point0screen3[0,0]=point0screen3[0,0]-P[0,3] #get rid of 4th column in projection matrix, is simple addition
+        point0screen3[1,0] = point0screen3[1,0] - P[1,3]
+        #print(f'point0screen={point0screen3}')
+        #print(f'P={P[:,:3]}')
+        #print(f'P-1={np.linalg.inv(P[:, :3])}')
         point0cam3=np.linalg.inv(P[:,:3])@point0screen3 #z=1
+        #print(f'point0cam3={point0cam3}')
+        #print(f'Ppoint0cam3={P[:,:3]@point0cam3}')
         point0cam3=point0cam3*depths0[ip]/point0cam3[2,0]
+        #print(f'point0cam3={point0cam3}')
         point0cam4=np.ones((4,1))
         point0cam4[:3]=point0cam3
         point1cam4=RT@point0cam4
+        #print(f'point1cam4={point1cam4}')
         point1screen3=P@point1cam4
+        point1screen3 = point1screen3/point1screen3[2,0]
+        print(f'point1screen={point1screen3}')
         projpoints[ip,0,:]=point1screen3[:2,0]
     return projpoints
 
@@ -86,9 +95,11 @@ for i in range(num_imgs):
     if i==0:
         dst = cv2.cornerHarris(leftnew,2,3,0.04)
         points=np.where(dst>0.01*dst.max())
+        pointsint=np.copy(points)
         points=np.array(points).T[:,None,:].astype('float32')
     if i>0:
         points, status, err = cv2.calcOpticalFlowPyrLK(left.T, leftnew.T, points, None) #idk if left or left.T
+
     points=points[points[:,0,0]<np.shape(leftnew)[0]]
     points=points[points[:,0,1]<np.shape(leftnew)[1]]
     points=points[points[:,0,0]>0]
@@ -99,9 +110,13 @@ for i in range(num_imgs):
     plt.colorbar()
     plt.scatter(points[:,0,1],points[:,0,0])
     plt.subplot(2,1,2)
-    depthL=f/disparityL*baseline
+    depthL=f/disparityL*baseline #images are stereo rectified
     depthL[depthL>200]=np.NaN
     depthL[depthL<0]=np.NaN
+    Pmatrix=dataset.calib.P_rect_00
+    #print(np.shape(pointsint))
+    print(np.shape(depthL[list(pointsint)]))
+    print(projectpointsback(points,depthL[list(pointsint)],Pmatrix,np.eye(4)))
     plt.imshow(depthL)
     plt.colorbar()
     plt.show()
