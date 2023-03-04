@@ -22,9 +22,9 @@ def rot_z(phi: float):
 
 def createRT(phiz1,phix,phiz2,tx,ty,tz):
     R=rot_z(phiz2)@rotx(phix)@rotz(phiz1)
-    RT=np.zeros((3,4))
+    RT=np.zeros((4,4))
     RT[:3,:3]=R
-    RT[:,3]=np.array([[tx],[ty],[tz]])
+    RT[:,3]=np.array([[tx],[ty],[tz],[1]])
     return RT
 
 def projectpointsback(points0,depths0,P,RT):
@@ -32,7 +32,21 @@ def projectpointsback(points0,depths0,P,RT):
     #transform to new left cam system using RT Matrix
     #project 3d points to screen in new position using P
     #return point coordinates on screen in new position
-    projpoints=points0
+    projpoints=np.zeros_like(points0)
+    for ip in range(len(points0)):
+        point=points0[ip,0]
+        print(point)
+        point0screen3=np.ones((3,1)) #point in camera position 0, coordinates on screen, 3 dimensional vector
+        point0screen3[0:2]=point
+        point0screen3[0]=point03[0]-P[3,0] #get rid of 4th column in projection matrix, is simple addition
+        point0screen3[0] = point03[1] - P[3, 1]
+        point0cam3=np.linalg.inv(P[:,:3])@point0screen3 #z=1
+        point0cam3=point0cam3*depths0[ip]/point0cam3[2,0]
+        point0cam4=np.ones((4,1))
+        point0cam4[:3]=point0cam3
+        point1cam4=RT@point0cam4
+        point1screen3=P@point1cam4
+        projpoints[ip,0,:]=point1screen3[:2,0]
     return projpoints
 
 def dist(points0,points1):
