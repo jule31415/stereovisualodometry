@@ -135,7 +135,7 @@ def keypoint_bucket(kps):
         bucket[index].append(kp)
     for i in range(0,180):
         if(bucket[i]!=None):
-            sortedbucket=sorted(bucket[i],key=lambda kp:kp.response,reverse=True)[:10]
+            sortedbucket=sorted(bucket[i],key=lambda kp:kp.response,reverse=True)[:5]
             for kp in sortedbucket:
                 x,y=kp.pt
                 kp_coordinate[i].append([[x,y]])
@@ -178,7 +178,7 @@ def feature_tracking(gray_t1,gray_t2,kpts):
 
 basedir='/home/user/Downloads/data_odometry_gray/dataset/'
 sequence = '00'
-num_imgs=10
+num_imgs=100
 dataset = pykitti.odometry(basedir, sequence, frames=range(num_imgs))
 second_pose = dataset.poses[1]
 
@@ -187,8 +187,11 @@ f     =7.188560000000e+02  # lense focal length
 baseline = dataset.calib.b_gray  # distance in m between the two cameras
 cl=iter(dataset.cam0)
 cr=iter(dataset.cam1)
+posestrue=dataset.poses[0:num_imgs]
 points=np.zeros((1,0,2))
 RTtot=np.eye(4)
+posesxz=np.zeros((2, num_imgs))
+posesxztrue=np.zeros((2, num_imgs))
 for i in range(num_imgs):
     right = np.array(next(cr))
     leftnew = np.array(next(cl))
@@ -226,11 +229,11 @@ for i in range(num_imgs):
     depthL[depthL > 200] = np.NaN
     depthL[depthL < 0] = np.NaN
     left=leftnew
-    plt.subplot(2,1,1)
+    plt.subplot(2,2,1)
     plt.imshow(left)
     plt.colorbar()
     plt.scatter(points[:,0,0],points[:,0,1])
-    plt.subplot(2,1,2)
+    plt.subplot(2,2,2)
 
 
     PM=dataset.calib.P_rect_00
@@ -244,11 +247,25 @@ for i in range(num_imgs):
             [np.pi / 4, np.pi / 4, np.pi / 4, 3.0, 3.0, 3.0])
         x0=np.zeros(6)
         #x0[5]=1.0
+        if i>1:
+            x0=params0.x
+        else:
+            x0=np.zeros(6)
         params0 = optimization.least_squares(fun=errfct, x0=x0, args=(pointsold, depthLpts,points,PM),bounds=bounds)
         #print(params0.x)
         RT=createRT(params0.x[0],params0.x[1],params0.x[2],params0.x[3],params0.x[4],params0.x[5])
         RTtot=np.linalg.inv(RT)@RTtot
         print(f'RTtot={RTtot}')
+        plt.subplot(2,2,3)
+        posesxz[:,i]=RTtot[[0,2],3]
+        posesxztrue[:,i]=posestrue[i][[0,2],3]
+        plt.plot(posesxz[0,:(i+1)],posesxz[1,:(i+1)] )
+        plt.plot(posesxztrue[0, :(i + 1)], posesxztrue[1, :(i + 1)])
+        plt.xlim([-25,25])
+        plt.ylim([-5, 45])
+    if len(points)<70:
+        points = np.vstack([points,np.array(distract_keypoint(leftnew))])
+        print('detect new points')
     plt.show()
 
 
