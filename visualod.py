@@ -50,13 +50,13 @@ def screen2cam(points0, depths0, P):
     return projpoints
 
 
-def projectpointsback(points0,depths0,P,RT):
+def projectpointsback(points0cam3,P,RT):
     #project points0 to 3d left cam system using depths and projection matrix P
     #transform to new left cam system using RT Matrix
     #project 3d points to screen in new position using P
     #return point coordinates on screen in new position
-    projpoints=np.zeros_like(points0)
-    points0cam3=screen2cam(points0, depths0, P)
+    projpoints=np.zeros((len(points0cam3),1,2))
+    #points0cam3=screen2cam(points0, depths0, P)
     for ip in range(len(points0cam3)):
         point0cam3=points0cam3[ip,:]
         point0cam4=np.ones((4,1))
@@ -73,9 +73,9 @@ def dist(points0,points1):
     #calculate geometric error of all points
     return np.linalg.norm(points1-points0,axis=2)[:,0]
 
-def errfct(params,points0,depths0,points1,P):
+def errfct(params,worldpts0,points1,P):
     RT=createRT(params[0],params[1],params[2],params[3],params[4],params[5])
-    points1proj=projectpointsback(points0,depths0,P,RT) #L[list(pointsint)]
+    points1proj=projectpointsback(worldpts0,P,RT) #L[list(pointsint)]
     # use for least square algorithm for optimizing RT Matrix parameters
     #print(points1proj[:50])
     return dist(points1,points1proj)
@@ -166,11 +166,15 @@ def feature_tracking(gray_t1,gray_t2,kpts):
     #img2=cv2.imread('data/image_L/2018-07-11-14-48-52_2018-07-11-15-09-57-567.png')
     #gray_t2 = cv2.cvtColor(src=img2, code=cv2.COLOR_BGR2GRAY)
     p1, st, err = cv2.calcOpticalFlowPyrLK(gray_t1, gray_t2, p0, None, **KL_param)
+    print('track')
+    print(len(p1))
+    print(len(st))
+    print(len(p0))
     k=0
     for i in st:
         if(i==1):
             k+=1
-    return p1, k
+    return p1, k, st
 
 
 
@@ -188,6 +192,7 @@ baseline = dataset.calib.b_gray  # distance in m between the two cameras
 cl=iter(dataset.cam0)
 cr=iter(dataset.cam1)
 posestrue=dataset.poses[0:num_imgs]
+PM=dataset.calib.P_rect_00
 points=np.zeros((1,0,2))
 RTtot=np.eye(4)
 posesxz=np.zeros((2, num_imgs))
@@ -195,39 +200,30 @@ posesxztrue=np.zeros((2, num_imgs))
 for i in range(num_imgs):
     right = np.array(next(cr))
     leftnew = np.array(next(cl))
-    #disparityL = left_matcher.compute(leftnew, right)
     disparityL =compute_left_disparity_map(leftnew, right,
                                matcher='sgbm', verbose=True)
-
     if i==0:
         points=np.array(distract_keypoint(leftnew))
-        points = points[points[:, 0, 0] < np.shape(leftnew)[1]]
-        points = points[points[:, 0, 1] < np.shape(leftnew)[0]]
-        points = points[points[:, 0, 0] > 0]
-        points = points[points[:, 0, 1] > 0]
     if i>0:
         pointsold=np.copy(points)
-        points,k=feature_tracking(left, leftnew, pointsold)
-        #print(feature_tracking(left.T,leftnew.T, pointsold))
-        pointsold=pointsold[points[:,0,0]<np.shape(leftnew)[1]]
-        points = points[points[:, 0, 0] < np.shape(leftnew)[1]]
-        pointsold=pointsold[points[:,0,1]<np.shape(leftnew)[0]]
-        points = points[points[:, 0, 1] < np.shape(leftnew)[0]]
-        pointsold=pointsold[points[:,0,0]>0]
-        points = points[points[:, 0, 0] > 0]
-        pointsold=pointsold[points[:,0,1]>0]
-        points = points[points[:, 0, 1] > 0]
+        worldptsold=np.copy(worldpts)
+        points,k, st=feature_tracking(left, leftnew, pointsold)
+        point_in_img_mask=[(points[:,0,0]<np.shape(leftnew)[1]) & (points[:,0,1]<np.shape(leftnew)[0]) & (points[:,0,0]>0) & (points[:, 0, 1] > 0)]
+        pointsold=pointsold[point_in_img_mask]
+        points = points[point_in_img_mask]
+        worldptsold=worldptsold[point_in_img_mask]
 
-        coordlist=list(pointsold[:,0,:].T.astype('int'))
-
-        depthLpts=depthL.T[coordlist] #this is still old depthL, thats correct #.T
-        points=points[np.isfinite(depthLpts)]
-        pointsold = pointsold[np.isfinite(depthLpts) ]
-        depthLpts=depthLpts[np.isfinite(depthLpts)]
-        #print(f'd={depthLpts[:50]}')
     depthL = f / disparityL * baseline  # images are stereo rectified
     depthL[depthL > 200] = np.NaN
     depthL[depthL < 0] = np.NaN
+    coordlist = list(points[:, 0, :].T.astype('int'))
+    depthLpts = depthL.T[coordlist]
+    points = points[np.isfinite(depthLpts)]
+    if i>0:
+        pointsold = pointsold[np.isfinite(depthLpts)]
+        worldptsold=worldptsold[np.isfinite(depthLpts)]
+    depthLpts = depthLpts[np.isfinite(depthLpts)]
+    worldpts=screen2cam(points,depthLpts,PM)
     left=leftnew
     plt.subplot(2,2,1)
     plt.imshow(left)
@@ -235,9 +231,6 @@ for i in range(num_imgs):
     plt.scatter(points[:,0,0],points[:,0,1])
     plt.subplot(2,2,2)
 
-
-    PM=dataset.calib.P_rect_00
-    #print(projectpointsback(points,depthL[list(pointsint)],PM,np.eye(4))) #just for testing projection, result should be equal to input
     plt.imshow(depthL)
     print(np.shape(depthL))
     plt.colorbar()
@@ -246,13 +239,11 @@ for i in range(num_imgs):
             [-np.pi / 4, -np.pi / 4, -np.pi / 4, -3.0, -3.0, -3.0],
             [np.pi / 4, np.pi / 4, np.pi / 4, 3.0, 3.0, 3.0])
         x0=np.zeros(6)
-        #x0[5]=1.0
         if i>1:
             x0=params0.x
         else:
             x0=np.zeros(6)
-        params0 = optimization.least_squares(fun=errfct, x0=x0, args=(pointsold, depthLpts,points,PM),bounds=bounds)
-        #print(params0.x)
+        params0 = optimization.least_squares(fun=errfct, x0=x0, args=(worldptsold,points,PM),bounds=bounds)
         RT=createRT(params0.x[0],params0.x[1],params0.x[2],params0.x[3],params0.x[4],params0.x[5])
         RTtot=np.linalg.inv(RT)@RTtot
         print(f'RTtot={RTtot}')
@@ -265,6 +256,11 @@ for i in range(num_imgs):
         plt.ylim([-5, 45])
     if len(points)<70:
         points = np.vstack([points,np.array(distract_keypoint(leftnew))])
+        coordlist = list(points[:, 0, :].T.astype('int'))
+        depthLpts = depthL.T[coordlist]
+        points = points[np.isfinite(depthLpts)]
+        depthLpts = depthLpts[np.isfinite(depthLpts)]
+        worldpts = screen2cam(points, depthLpts, PM)
         print('detect new points')
     plt.show()
 
