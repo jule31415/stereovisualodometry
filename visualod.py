@@ -161,22 +161,18 @@ def feature_tracking(gray_t1,gray_t2,kpts):
     #p0=cv2.goodFeaturesToTrack(gray_t1, mask=None, **feature_params)
     #p0=np.array(distract_keypoint(gray_t1),dtype=np.float32)
     p0 = kpts.astype('float32')
-    print(type(p0))
     #while(True):
     #img2=cv2.imread('data/image_L/2018-07-11-14-48-52_2018-07-11-15-09-57-567.png')
     #gray_t2 = cv2.cvtColor(src=img2, code=cv2.COLOR_BGR2GRAY)
     p1, st, err = cv2.calcOpticalFlowPyrLK(gray_t1, gray_t2, p0, None, **KL_param)
-    print('track')
-    print(len(p1))
-    print(len(st))
-    print(len(p0))
     k=0
     for i in st:
         if(i==1):
             k+=1
     return p1, k, st
 
-
+def inlierdetection(points1, worldpoints0, worldpoints1):
+    return points1, worldpoints0, worldpoints1
 
 
 
@@ -209,7 +205,7 @@ for i in range(num_imgs):
         worldptsold=np.copy(worldpts)
         points,k, st=feature_tracking(left, leftnew, pointsold)
         point_in_img_mask=[(points[:,0,0]<np.shape(leftnew)[1]) & (points[:,0,1]<np.shape(leftnew)[0]) & (points[:,0,0]>0) & (points[:, 0, 1] > 0)]
-        pointsold=pointsold[point_in_img_mask]
+
         points = points[point_in_img_mask]
         worldptsold=worldptsold[point_in_img_mask]
 
@@ -220,7 +216,6 @@ for i in range(num_imgs):
     depthLpts = depthL.T[coordlist]
     points = points[np.isfinite(depthLpts)]
     if i>0:
-        pointsold = pointsold[np.isfinite(depthLpts)]
         worldptsold=worldptsold[np.isfinite(depthLpts)]
     depthLpts = depthLpts[np.isfinite(depthLpts)]
     worldpts=screen2cam(points,depthLpts,PM)
@@ -232,9 +227,9 @@ for i in range(num_imgs):
     plt.subplot(2,2,2)
 
     plt.imshow(depthL)
-    print(np.shape(depthL))
     plt.colorbar()
     if i>0:
+        points,worldpointsold, worldpoints=inlierdetection(points, worldptsold, worldpts)
         bounds = (
             [-np.pi / 4, -np.pi / 4, -np.pi / 4, -3.0, -3.0, -3.0],
             [np.pi / 4, np.pi / 4, np.pi / 4, 3.0, 3.0, 3.0])
