@@ -21,8 +21,9 @@ def rot_z(phi: float):
                      [np.sin(phi), np.cos(phi), 0],
                      [0, 0, 1]])
 
-def createRT(phiz1,phix,phiz2,tx,ty,tz):
-    R=rot_z(phiz2)@rot_x(phix)@rot_z(phiz1)
+def createRT(phix,phiy,phiz,tx,ty,tz):
+
+    R=rot_x(phix)@rot_y(phiy)@rot_z(phiz)
     RT=np.zeros((4,4))
     RT[:3,:3]=R
     RT[:,3]=np.array([tx,ty,tz,1])
@@ -135,7 +136,7 @@ def keypoint_bucket(kps):
         bucket[index].append(kp)
     for i in range(0,180):
         if(bucket[i]!=None):
-            sortedbucket=sorted(bucket[i],key=lambda kp:kp.response,reverse=True)[:5]
+            sortedbucket=sorted(bucket[i],key=lambda kp:kp.response,reverse=True)[:10]
             for kp in sortedbucket:
                 x,y=kp.pt
                 kp_coordinate[i].append([[x,y]])
@@ -171,14 +172,39 @@ def feature_tracking(gray_t1,gray_t2,kpts):
             k+=1
     return p1, k, st
 
-def inlierdetection(points1, worldpoints0, worldpoints1):
-    return points1, worldpoints0, worldpoints1
 
+def inlierdetection(points1, worldpoints0, worldpoints1):
+    dmax=0.2
+    wp0a=worldpoints0[None,:,:]
+    wp0b = worldpoints0[:,None, :]
+    wp1a = worldpoints1[None,:, :]
+    wp1b=worldpoints1[:,None,:]
+    d0=np.linalg.norm(wp0a-wp0b,axis=2)
+    d1 = np.linalg.norm(wp1a - wp1b, axis=2)
+    consistent=np.zeros_like(d0)
+    consistent[np.abs(d1-d0)<dmax]=1
+    bestpoint=np.argmax(np.sum(consistent, axis=0))
+    cliqueind=[bestpoint]
+    while True:
+        consistentwithclique=(np.sum(consistent[cliqueind,:],axis=0)==len(cliqueind))
+        consistentwithclique[cliqueind]=False
+        consistentwithcliqueind=np.where(consistentwithclique)[0]
+        nconsistentwithpotentialinliers = np.sum(consistent[consistentwithcliqueind, :], axis=0)
+        nconsistentwithpotentialinliers[consistentwithclique==False]=0
+        newcliqueind=np.argmax(nconsistentwithpotentialinliers)
+        if nconsistentwithpotentialinliers[newcliqueind]<2:
+            break
+        cliqueind.append(newcliqueind)
+        if len(cliqueind)>100:
+            break
+
+
+    return points1[cliqueind], worldpoints0[cliqueind], worldpoints1[cliqueind]
 
 
 basedir='/home/user/Downloads/data_odometry_gray/dataset/'
 sequence = '00'
-num_imgs=100
+num_imgs=300
 dataset = pykitti.odometry(basedir, sequence, frames=range(num_imgs))
 second_pose = dataset.poses[1]
 
@@ -193,6 +219,7 @@ points=np.zeros((1,0,2))
 RTtot=np.eye(4)
 posesxz=np.zeros((2, num_imgs))
 posesxztrue=np.zeros((2, num_imgs))
+anglesum=0
 for i in range(num_imgs):
     right = np.array(next(cr))
     leftnew = np.array(next(cl))
@@ -229,27 +256,31 @@ for i in range(num_imgs):
     plt.imshow(depthL)
     plt.colorbar()
     if i>0:
-        points,worldpointsold, worldpoints=inlierdetection(points, worldptsold, worldpts)
+        pointslsq,worldptsoldlsq, worldptslsq=inlierdetection(points, worldptsold, worldpts)
         bounds = (
-            [-np.pi / 4, -np.pi / 4, -np.pi / 4, -3.0, -3.0, -3.0],
-            [np.pi / 4, np.pi / 4, np.pi / 4, 3.0, 3.0, 3.0])
+            [-np.pi / 8, -np.pi / 4, -np.pi / 8, -1.0, -0.5, -1.5],
+            [np.pi / 8, np.pi / 4, np.pi / 8, 1.0, 0.5, 1.5])
         x0=np.zeros(6)
-        if i>1:
-            x0=params0.x
-        else:
-            x0=np.zeros(6)
-        params0 = optimization.least_squares(fun=errfct, x0=x0, args=(worldptsold,points,PM),bounds=bounds)
+        #if i>1:
+        #    x0=params0.x
+        #else:
+        #    x0=np.zeros(6)
+        params0 = optimization.least_squares(fun=errfct, x0=x0, args=(worldptsoldlsq,pointslsq,PM),method='lm')
         RT=createRT(params0.x[0],params0.x[1],params0.x[2],params0.x[3],params0.x[4],params0.x[5])
-        RTtot=np.linalg.inv(RT)@RTtot
+        RTtot=RTtot @ np.linalg.inv(RT)
         print(f'RTtot={RTtot}')
+        #print(f'RTstep={params0.x}')
+        #print(f'RTstep={np.linalg.inv(RT)}')
+        anglesum=anglesum+params0.x[1]
+        #print(anglesum)
         plt.subplot(2,2,3)
         posesxz[:,i]=RTtot[[0,2],3]
         posesxztrue[:,i]=posestrue[i][[0,2],3]
         plt.plot(posesxz[0,:(i+1)],posesxz[1,:(i+1)] )
         plt.plot(posesxztrue[0, :(i + 1)], posesxztrue[1, :(i + 1)])
-        plt.xlim([-25,25])
-        plt.ylim([-5, 45])
-    if len(points)<70:
+        plt.xlim([-100,100])
+        plt.ylim([-5, 195])
+    if len(points)<100:
         points = np.vstack([points,np.array(distract_keypoint(leftnew))])
         coordlist = list(points[:, 0, :].T.astype('int'))
         depthLpts = depthL.T[coordlist]
@@ -257,7 +288,7 @@ for i in range(num_imgs):
         depthLpts = depthLpts[np.isfinite(depthLpts)]
         worldpts = screen2cam(points, depthLpts, PM)
         print('detect new points')
-    plt.show()
+plt.show()
 
 
 
