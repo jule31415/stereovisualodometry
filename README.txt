@@ -8,7 +8,7 @@ Output: trajectory of the camera
 This archive contains:
 demo.ipynb (Demo notebook for 2 frames)
 main.py (main python file that produces animation for 200 frames)
-video that shows results vor 4000 frames
+video that shows results for 4000 frames
 project report
 a small dataset
 
