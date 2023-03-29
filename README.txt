@@ -12,6 +12,8 @@ video that shows results vor 4000 frames
 project report
 a small dataset
 
+programming language: python
+
 used libs:
 pykitti https://github.com/utiasSTARS/pykitti
 opencv
